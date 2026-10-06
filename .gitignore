@@ -1,0 +1,17 @@
+# Secrets and local settings
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local data volumes and logs
+data/
+*.log
