@@ -1,11 +1,16 @@
 import json
+import logging
+import logging
 import os
+import time
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.logging_config import configure_logging
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 REDIS_URL = os.environ["REDIS_URL"]
@@ -16,6 +21,7 @@ KNOWN_TENANTS = {"acme", "globex", "initech"}
 app = FastAPI(title="WatchDesk API")
 engine = create_async_engine(DATABASE_URL, pool_size=5, max_overflow=5)
 redis = Redis.from_url(REDIS_URL, decode_responses=True)
+logger = configure_logging()
 
 
 class OrderCreate(BaseModel):
@@ -34,16 +40,36 @@ async def get_tenant(x_tenant: str = Header(..., alias="X-Tenant")) -> str:
 
 
 async def get_request_id(x_request_id: str | None = Header(default=None, alias="X-Request-ID")) -> str:
-    """Read the request ID Nginx generated. Fall back to 'unknown' if ever missing
-    (e.g. a direct call that bypassed Nginx), so downstream code never breaks on it."""
     return x_request_id or "unknown"
 
 
 @app.middleware("http")
-async def add_request_id_response_header(request: Request, call_next):
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
     response: Response = await call_next(request)
+    latency_ms = round((time.perf_counter() - start) * 1000, 1)
+
     request_id = request.headers.get("X-Request-ID", "unknown")
     response.headers["X-Request-ID"] = request_id
+
+    # Tenant is read straight from the header here (not from Depends), because
+    # middleware runs even for requests that error out before reaching an endpoint.
+    tenant = request.headers.get("X-Tenant", "none")
+
+    level = logging.ERROR if response.status_code >= 500 else logging.INFO
+    logger.log(
+        level,
+        "request completed",
+        extra={
+            "request_id": request_id,
+            "tenant": tenant,
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "latency_ms": latency_ms,
+        },
+    )
+
     return response
 
 
