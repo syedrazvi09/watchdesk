@@ -1,15 +1,16 @@
 import json
 import logging
-import logging
 import os
 import time
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.faults import FAULTS, InjectedFault, apply_request_faults
 from app.logging_config import configure_logging
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -29,6 +30,10 @@ class OrderCreate(BaseModel):
     quantity: int = Field(default=1, ge=1, le=10)
 
 
+class FaultUpdate(BaseModel):
+    enabled: bool
+
+
 async def get_tenant(x_tenant: str = Header(..., alias="X-Tenant")) -> str:
     tenant = x_tenant.strip().lower()
     if tenant not in KNOWN_TENANTS:
@@ -46,20 +51,24 @@ async def get_request_id(x_request_id: str | None = Header(default=None, alias="
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.perf_counter()
-    response: Response = await call_next(request)
+    error_text = None
+    try:
+        response: Response = await call_next(request)
+    except Exception as exc:
+        # An unhandled exception: return a 500 ourselves so we can still log it.
+        error_text = f"{type(exc).__name__}: {exc}"
+        response = JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
     latency_ms = round((time.perf_counter() - start) * 1000, 1)
 
     request_id = request.headers.get("X-Request-ID", "unknown")
     response.headers["X-Request-ID"] = request_id
-
-    # Tenant is read straight from the header here (not from Depends), because
-    # middleware runs even for requests that error out before reaching an endpoint.
     tenant = request.headers.get("X-Tenant", "none")
 
     level = logging.ERROR if response.status_code >= 500 else logging.INFO
+    message = f"request failed: {error_text}" if error_text else "request completed"
     logger.log(
         level,
-        "request completed",
+        message,
         extra={
             "request_id": request_id,
             "tenant": tenant,
@@ -69,7 +78,6 @@ async def log_requests(request: Request, call_next):
             "latency_ms": latency_ms,
         },
     )
-
     return response
 
 
@@ -78,15 +86,37 @@ async def health():
     return {"status": "ok"}
 
 
+# --- Admin / development controls. Not customer-facing. ---
+
+@app.get("/admin/faults")
+async def get_faults():
+    return FAULTS
+
+
+@app.put("/admin/faults/{fault_name}")
+async def set_fault(fault_name: str, update: FaultUpdate):
+    if fault_name not in FAULTS:
+        raise HTTPException(status_code=404, detail=f"Unknown fault '{fault_name}'")
+    FAULTS[fault_name] = update.enabled
+    logger.warning(f"fault {fault_name} set to {update.enabled}")
+    return FAULTS
+
+
+# --- Customer endpoints ---
+
 @app.get("/api/products")
 async def list_products(
     tenant: str = Depends(get_tenant),
     request_id: str = Depends(get_request_id),
 ):
-    try:
-        cached = await redis.get(PRODUCTS_CACHE_KEY)
-    except Exception:
-        cached = None
+    await apply_request_faults()
+
+    cached = None
+    if not FAULTS["redis_failure"]:
+        try:
+            cached = await redis.get(PRODUCTS_CACHE_KEY)
+        except Exception:
+            cached = None
 
     if cached is not None:
         return json.loads(cached)
@@ -101,14 +131,15 @@ async def list_products(
         {**row, "price": float(row["price"])} for row in rows
     ]
 
-    try:
-        await redis.set(
-            PRODUCTS_CACHE_KEY,
-            json.dumps(serializable),
-            ex=PRODUCTS_CACHE_TTL_SECONDS,
-        )
-    except Exception:
-        pass
+    if not FAULTS["redis_failure"]:
+        try:
+            await redis.set(
+                PRODUCTS_CACHE_KEY,
+                json.dumps(serializable),
+                ex=PRODUCTS_CACHE_TTL_SECONDS,
+            )
+        except Exception:
+            pass
 
     return serializable
 
@@ -119,6 +150,8 @@ async def create_order(
     tenant: str = Depends(get_tenant),
     request_id: str = Depends(get_request_id),
 ):
+    await apply_request_faults()
+
     async with engine.begin() as conn:
         product = (
             await conn.execute(
@@ -151,6 +184,8 @@ async def get_order(
     tenant: str = Depends(get_tenant),
     request_id: str = Depends(get_request_id),
 ):
+    await apply_request_faults()
+
     async with engine.connect() as conn:
         row = (
             await conn.execute(
