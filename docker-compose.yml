@@ -13,6 +13,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        tag: db
 
   redis:
     image: redis:7-alpine
@@ -21,6 +27,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        tag: redis
 
   api:
     build: ./services/api
@@ -32,6 +44,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        tag: api
 
   nginx:
     image: nginx:1.27-alpine
@@ -41,11 +59,32 @@ services:
       - "8000:8000"
     depends_on:
       - api
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        tag: nginx
 
   trafficgen:
     build: ./services/trafficgen
     depends_on:
       - nginx
-      
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        fluentd-async: "true"
+        tag: trafficgen
+
+  fluent-bit:
+    image: fluent/fluent-bit:3.2
+    volumes:
+      - ./monitoring/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./monitoring/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - ./monitoring/fluent-bit/add_service.lua:/fluent-bit/etc/add_service.lua:ro
+    ports:
+      - "24224:24224"
+
 volumes:
   pgdata:
