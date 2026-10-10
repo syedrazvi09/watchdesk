@@ -85,6 +85,9 @@ services:
       - ./monitoring/fluent-bit/add_service.lua:/fluent-bit/etc/add_service.lua:ro
     ports:
       - "24224:24224"
+    depends_on:
+      opensearch:
+        condition: service_healthy
 
   opensearch:
     image: opensearchproject/opensearch:2.17.1

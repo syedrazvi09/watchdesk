@@ -1,0 +1,29 @@
+{
+  "index_patterns": ["watchdesk-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp":              { "type": "date" },
+        "timestamp":               { "type": "date" },
+        "level":                   { "type": "keyword" },
+        "service":                 { "type": "keyword" },
+        "request_id":              { "type": "keyword" },
+        "tenant":                  { "type": "keyword" },
+        "method":                  { "type": "keyword" },
+        "path":                    { "type": "keyword" },
+        "status":                  { "type": "integer" },
+        "latency_ms":              { "type": "float" },
+        "request_time":            { "type": "float" },
+        "upstream_status":         { "type": "keyword" },
+        "upstream_response_time":  { "type": "keyword" },
+        "message":                 { "type": "text" },
+        "log":                     { "type": "text" },
+        "container_name":          { "type": "keyword" }
+      }
+    }
+  }
+}
