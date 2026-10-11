@@ -1,0 +1,6 @@
+{"attributes":{"description":"","filters":[],"query":{"language":"kuery","query":"level:ERROR"},"title":"wd-all-errors"},"id":"wd-all-errors","references":[],"type":"query","updated_at":"2026-10-11T11:32:45.052Z","version":"WzExLDJd"}
+{"attributes":{"description":"","filters":[],"query":{"language":"kuery","query":"tenant:acme"},"title":"wd-tenant-acme"},"id":"wd-tenant-acme","references":[],"type":"query","updated_at":"2026-10-11T11:33:23.864Z","version":"WzEyLDJd"}
+{"attributes":{"description":"","filters":[],"query":{"language":"kuery","query":"request_id:9401ba6500ccf6af1d6315c587dc2361"},"title":"wd-request-trace"},"id":"wd-request-trace","references":[],"type":"query","updated_at":"2026-10-11T11:33:58.047Z","version":"WzEzLDJd"}
+{"attributes":{"description":"","filters":[],"query":{"language":"kuery","query":"status >= 500"},"title":"wd-http-5xx"},"id":"wd-http-5xx","references":[],"type":"query","updated_at":"2026-10-11T11:34:20.941Z","version":"WzE0LDJd"}
+{"attributes":{"description":"","filters":[],"query":{"language":"kuery","query":"latency_ms > 1000 or request_time > 1"},"title":"wd-slow-requests"},"id":"wd-slow-requests","references":[],"type":"query","updated_at":"2026-10-11T11:34:41.113Z","version":"WzE1LDJd"}
+{"exportedCount":5,"missingRefCount":0,"missingReferences":[]}
