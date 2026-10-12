@@ -88,6 +88,8 @@ services:
     depends_on:
       opensearch:
         condition: service_healthy
+      opensearch-init:
+        condition: service_completed_successfully
 
   opensearch:
     image: opensearchproject/opensearch:2.17.1
@@ -123,7 +125,17 @@ services:
     depends_on:
       opensearch:
         condition: service_healthy
-        
+
+  opensearch-init:
+    image: curlimages/curl:8.10.1
+    volumes:
+      - ./monitoring/opensearch/index-template.json:/index-template.json:ro
+    command: ["-sS", "-f", "-X", "PUT", "http://opensearch:9200/_index_template/watchdesk-logs", "-H", "Content-Type: application/json", "--data-binary", "@/index-template.json"]
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: "no"    
+
 volumes:
   pgdata:
   osdata:
